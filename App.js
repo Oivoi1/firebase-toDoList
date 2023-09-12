@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, TextInput, Alert, ScrollView } from 'react-native';
-import { child, onValue, push, ref, remove, update } from 'firebase/database';
-import { db, TODOS_REF } from './firebase/Config';
+import { View, Text, Button, TextInput, Alert, ScrollView,Pressable } from 'react-native';
+import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, orderBy, query, QuerySnapshot } from 'firebase/firestore';
+import { db, TODOS_REF, USERS_REF } from './firebase/Config';
 import { TodoItem } from './components/TodoItem';
+import { MaterialIcons } from "@expo/vector-icons";
 import styles from './style/style';
+import { async } from '@firebase/util';
 
 export default function App() {
   
@@ -11,31 +13,63 @@ export default function App() {
   const [todos, setTodos] = useState({});
 
   useEffect(() => {
-    const todoItemsRef = ref(db, TODOS_REF);
-    onValue(todoItemsRef, (snapshot) => {
-      const data = snapshot.val() ? snapshot.val() : {};
-      const todoItems = {...data};
-      setTodos(todoItems);
-    });
+    const q = query(collection(db, TODOS_REF), orderBy("todoItem"))
+    onSnapshot(q,(querySnapshot) => {
+      setTodos(querySnapshot.docs.map( doc =>({
+        id: doc.id,
+        ...doc.data()
+      })))
+    })
   }, []);
 
-  const addNewTodo = () => {
-    if (newTodo.trim() !== "") {
-      const newTodoItem = {
-        done: false,
-        todoItem: newTodo
+  const addNewTodo = async () => {
+    try{
+      if(newTodo.trim() !==""){
+        await addDoc(collection(db, TODOS_REF), {
+          done: false,
+          todoItem: newTodo
+        });
       };
-      const newTodoItemKey = push(child(ref(db), TODOS_REF)).key;
-      const updates = {};
-      updates[TODOS_REF + newTodoItemKey] = newTodoItem;
-      setNewTodo('');
-      return update(ref(db), updates);
+    }
+    catch{
+      console.log(error.message);
     }
   }
 
-  const removeTodos = () => {
-    remove(ref(db), TODOS_REF);
+  const removeTodo = async (id) => {
+    try{
+      await deleteDoc(doc(db, TODOS_REF, id));
+    }
+    catch{
+      console.log(error.message);
+    }
   }
+
+  const removeTodos = async () => {
+    try{
+      const querySnapshot =
+      await getDocs(collection(db, TODOS_REF));
+      querySnapshot.forEach((todo) => {
+        removeTodo(todo.id)
+      })
+    }
+    catch{
+
+    }
+  }
+
+  const filterTodos = (filterValue) => {
+    let nbrOfFilteredTodos = 0;
+    for (let i = 0; i < todos.length; i++){
+      if(todos[i].done === filterValue) {
+        nbrOfFilteredTodos++;
+      }
+    }
+    return nbrOfFilteredTodos;
+  }
+
+  let nbrOfUncheckedTodos = filterTodos(false);
+  let nbrOfCheckedTodos = filterTodos(true);
 
   const createTwoButtonAlert = () => Alert.alert(
     "Todolist", "Remove all items?", [{
@@ -68,19 +102,22 @@ export default function App() {
           title="Add new Todo item"
           onPress={() => addNewTodo()}
         />
+        <Text style={styles.subheader}>Unchecked ({nbrOfUncheckedTodos})</Text>
       </View>
       <ScrollView>
         {todosKeys.length > 0 ? (
-          todosKeys.map(key => (
+          todosKeys.map((key, i)=> (
+            !todos[i].done &&
           <TodoItem
             key={key}
             todoItem={todos[key]}
-            id={key}
+            id={todos[key].id}
           />
         ))
         ) : (
-          <Text style={styles.infoText}>There are no items</Text>
+          <Text style={styles.infoText}>There are no unchecked items</Text>
         )}
+        
         <View style={styles.buttonStyle}>
           <Button 
             title="Remove all todos" 
